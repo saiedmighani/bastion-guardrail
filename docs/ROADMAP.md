@@ -104,6 +104,26 @@ Any **one** of these is a plausible top-tier paper; together they form a cohesiv
 - [ ] LoRA / DoRA / full FT comparisons; FLOPs & carbon accounting.
 - [ ] **Ship:** reproducible `bastion train` with config-as-code.
 
+#### M3.5 — Ternary-Bonsai candidate track (gated, parallel to M3)
+
+PrismML released **Ternary Bonsai** (Apr 16 2026) — a family of end-to-end 1.58-bit ternary LMs at 8B / 4B / **1.7B**, Apache-2.0, available on Hugging Face (`prism-ml/*`). Every tensor (embeddings, attention, MLP, LM head) is ternary {-s, 0, +s} with a shared FP16 scale per 128-weight group. The 8B is ~1.75 GB; the 1.7B should land in the 300-500 MB range — **CPU-resident, sub-10ms latency territory**. Reported 8B avg: 75.5, beating models 9-10× larger in the same class.
+
+**Why it matters for Bastion.** Adds a third point on the Pareto frontier alongside ModernBERT (encoder) and Qwen3-1.7B (BF16 decoder): `accuracy × latency × memory`. Enables a **"CPU-only / edge sidecar" deployment story** — compelling headline: *"first certified, policy-conditioned guardrail runnable under 500 MB on CPU."*
+
+**Gated — commit compute only after three smoke tests pass:**
+
+1. **Fine-tunability check (2-3 days).** End-to-end ternary weights break the standard BF16 backward-pass assumption in `transformers` / `peft` / `trl`. Confirm a working QAT / STE SFT path — most likely LoRA on the FP16 group scales, or a two-stage recipe (dequant → BF16 LoRA → requantize). If no FT path is viable, this track is cancelled.
+2. **Policy-following at 1.7B ternary (1 day).** Prompt with a multi-clause policy + 50 held-out inputs; measure whether the model discriminates at the clause level (not just global toxicity). Threshold: ≥ 0.85 F1 on a ToxicChat subsample with a minimal PaPD prompt. Below that, drop to a footnote.
+3. **Certification compatibility (2 days).** Verify randomized-smoothing decision surface is non-degenerate under ternary quantization; fall back to **conformal-only** certification for this variant if certified radii are vacuous. Report both empirical and certified robustness honestly.
+
+**Non-critical path.** Qwen3-1.7B stays the default decoder baseline. Ternary Bonsai is an *additive* experiment — if the gates fail, the main paper is unaffected; if they pass, it likely becomes the serving-tier headline and a strong broader-impact narrative (accessible safety tooling).
+
+- [ ] Gate 1 — ternary-compatible FT recipe validated on SmolLM-scale smoke task.
+- [ ] Gate 2 — policy-conditioned smoke eval ≥ 0.85 F1.
+- [ ] Gate 3 — certification regime selected (smoothing vs. conformal-only).
+- [ ] If all gates pass: add `prism-ml/Ternary-Bonsai-1.7B` to the M7 sweep as an independent size class.
+- [ ] **Ship (conditional):** CPU-only reference deployment + `bastion serve --backend llama.cpp` path.
+
 ### M4 — Certification Layer (Week 10-13)
 - [ ] Randomized smoothing over token-level synonym perturbations (WordNet + MLM-substitution).
 - [ ] Conformal risk control on a calibration split; emit per-request `(decision, margin, q̂)`.
@@ -209,6 +229,7 @@ Target first submission: **NeurIPS 2026** (abstract reg ~mid-May, full paper ~la
 | Base model licensing (Llama/Gemma) | Low | Med | Ensure Apache/MIT track (Qwen3, SmolLM3, OLMo-2) for headline release |
 | Reviewers see "yet another guardrail" | Med | High | Lead with **policy-conditioning + certification** as the story; relegate benchmarks to tables |
 | Dual-use / safety-washing concerns | Low | High | Write thoughtful broader-impact; red-team artifacts gated; responsible-release plan |
+| Ternary-Bonsai track fails its gates (new, unvetted pretrain; ternary FT tooling immature) | Med | Low | Parallel/optional track — Qwen3-1.7B remains default; drop to footnote if any M3.5 gate fails |
 
 ---
 
