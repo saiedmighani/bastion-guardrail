@@ -124,6 +124,34 @@ PrismML released **Ternary Bonsai** (Apr 16 2026) — a family of end-to-end 1.5
 - [ ] If all gates pass: add `prism-ml/Ternary-Bonsai-1.7B` to the M7 sweep as an independent size class.
 - [ ] **Ship (conditional):** CPU-only reference deployment + `bastion serve --backend llama.cpp` path.
 
+#### M3.6 — Specialist Distillation into a Policy-Conditioned Student
+
+Inspired by Hinton, Vinyals & Dean (2015, §5-6 — "specialist" ensembles trained on confusable subsets of a large label space and distilled into a single model). We adapt the idea to guardrails by treating **risk categories as the confusable subsets**.
+
+**Category taxonomy (v0, revisit after M1).** jailbreak · toxicity/hate · self-harm · sexual/CSAM · PII exfiltration · prompt-injection · IP/copyright · brand-safety · regulatory-compliance (GDPR/HIPAA/PCI). Expect category overlap; run a **co-occurrence study** in M5 and collapse or merge categories before specializing.
+
+**Two tracks, staged:**
+
+- **M3.6a — Multi-head baseline (first cut).** Single shared backbone, one classification head per category + a fusion head. Cheap, clean, and becomes the within-paper baseline for the specialist-distillation variant.
+- **M3.6b — Specialist-distillation (SOTA path).** For each category, train a dedicated teacher on a category-specific SPaRC corpus (category-specialized Attacker + Judge). Distill the teacher ensemble into a single policy-conditioned student using soft targets, with two key twists:
+  - **Clause-gated distillation:** during training the student only receives soft-target weight from teachers whose category is active in the current policy rendering. This ties PaPD directly to the distillation signal and is the novel contribution.
+  - **Per-category temperature:** tune `T_c` per teacher — categories with higher label noise (e.g. brand-safety) get softer targets than hard-rule categories (e.g. PII).
+
+**Certification interaction.** Each specialist gets its own conformal calibration split → the student inherits a **calibrated risk vector** `(q̂_c)_c` rather than a scalar; the §4 CMG bound generalizes via a union bound over categories. Write this up as a sub-contribution in the theory section.
+
+**Paper framing (how to position this, given it's rooted in 2015 work).**
+- Cite Hinton'15 as inspiration for the specialist-ensemble scaffold.
+- Differentiate against recent baselines: Aegis-Guard's multi-head taxonomy, ShieldGemma-2's category heads, WildGuard's joint head, and task-arithmetic / model-merging safety work.
+- The novel claim is **clause-gated distillation with policy conditioning** — not specialists per se, nor distillation per se.
+
+**Deliverables:**
+- [ ] Category taxonomy doc (`docs/CATEGORIES.md`) with inclusion/exclusion criteria and overlap notes.
+- [ ] Per-category SPaRC profile (attacker prompts, judge rubric, eval slice) — extends M2.
+- [ ] M3.6a multi-head baseline trained and benchmarked.
+- [ ] M3.6b specialist teachers trained; clause-gated distillation recipe implemented.
+- [ ] Ablations (feed into M7): specialists-vs-multi-head, with/without clause gating, per-category temperature sweep, hard-label vs. soft-label student, distillation vs. MoE-at-inference (small-scale).
+- [ ] Theory addendum: per-category conformal → calibrated risk vector with union-bound guarantee.
+
 ### M4 — Certification Layer (Week 10-13)
 - [ ] Randomized smoothing over token-level synonym perturbations (WordNet + MLM-substitution).
 - [ ] Conformal risk control on a calibration split; emit per-request `(decision, margin, q̂)`.
@@ -149,6 +177,7 @@ Metrics: AUROC, F1@FPR=1%, ECE, over-refusal rate, certified-accuracy, robustnes
 ### M7 — Paper Experiments & Ablations (Week 14-20)
 - [ ] Full benchmark sweep (≥3 seeds) across 4 base sizes × 3 recipes × 4 attack budgets.
 - [ ] Ablations: policy-dropout, judge ensemble size, attacker diversity (n-gram, MAUVE), curriculum vs. uniform sampling, smoothing σ.
+- [ ] Specialist-distillation ablations (from M3.6): multi-head vs. specialist-distilled student; clause-gated vs. unconditional distillation; per-category temperature sweep; hard- vs. soft-target; number of specialists (collapsed taxonomies); distillation vs. MoE-at-inference on a single size class.
 - [ ] Qualitative: failure-mode taxonomy + human agreement study (Cohen's κ on 500 samples, 3 raters).
 - [ ] Compute budget statement + energy / CO2 eq (MLCO2 methodology).
 
@@ -230,6 +259,8 @@ Target first submission: **NeurIPS 2026** (abstract reg ~mid-May, full paper ~la
 | Reviewers see "yet another guardrail" | Med | High | Lead with **policy-conditioning + certification** as the story; relegate benchmarks to tables |
 | Dual-use / safety-washing concerns | Low | High | Write thoughtful broader-impact; red-team artifacts gated; responsible-release plan |
 | Ternary-Bonsai track fails its gates (new, unvetted pretrain; ternary FT tooling immature) | Med | Low | Parallel/optional track — Qwen3-1.7B remains default; drop to footnote if any M3.5 gate fails |
+| Category taxonomy too leaky for specialist distillation (overlap between jailbreak / self-harm / injection) | Med | Med | Co-occurrence study before M3.6b; collapse categories when mutual information exceeds threshold; fall back to M3.6a multi-head as paper baseline |
+| Specialists add training complexity with marginal gain over multi-head | Med | Med | Pre-register multi-head as baseline; commit to specialist-distillation only if M3.6b beats M3.6a by a pre-agreed margin on PolicyBench-Compose |
 
 ---
 
